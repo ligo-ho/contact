@@ -1,34 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 
-/*
- * Optional zero-dependency static server.
- *
- * You do NOT need this — any static server works (see SETUP.md). Its only job is
- * to serve the files on a fixed origin AND send real security headers (a proper
- * Content-Security-Policy header is stronger than the <meta> fallback in the HTML).
- *
- *   node server.js            # http://localhost:8000
- *   PORT=5173 node server.js  # custom port
- *
- * Whichever origin you use here must be registered with Google and Microsoft
- * (see SETUP.md).
- */
-
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = __dirname;
+const ROOT = path.resolve(__dirname);
 const PORT = process.env.PORT || 8000;
+const PUBLIC_FILES = new Set(['/index.html', '/app.js', '/style.css', '/config.js']);
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
 };
 
 const CSP = [
@@ -42,6 +26,7 @@ const CSP = [
   "base-uri 'none'",
   "object-src 'none'",
   "form-action 'none'",
+  "frame-ancestors 'none'",
 ].join('; ');
 
 const SECURITY_HEADERS = {
@@ -49,23 +34,30 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'Cross-Origin-Opener-Policy': 'same-origin-allow-popups', // needed for auth popups
-  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+  'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+  'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=(), usb=()',
+  'Cache-Control': 'no-store',
 };
 
 const server = http.createServer((req, res) => {
-  let pathname = decodeURIComponent(req.url.split('?')[0]);
-  if (pathname === '/') pathname = '/index.html';
-
-  const filePath = path.join(ROOT, path.normalize(pathname));
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403);
-    return res.end('Forbidden');
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Bad request');
   }
 
+  if (pathname === '/') pathname = '/index.html';
+  if (!PUBLIC_FILES.has(pathname)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS });
+    return res.end('Not found');
+  }
+
+  const filePath = path.join(ROOT, pathname.slice(1));
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS });
       return res.end('Not found');
     }
     res.writeHead(200, {
@@ -78,5 +70,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log('Serving contacts-sync on http://localhost:' + PORT);
-  console.log('Make sure this exact origin is registered with Google & Microsoft (see SETUP.md).');
+  console.log('Register this exact origin with Google and Microsoft.');
 });
