@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>סנכרון אנשי קשר · Google ⇄ Microsoft</title>
+
+  <!--
+    Content-Security-Policy (fallback for static hosting).
+    server.js sends the same policy as a real HTTP header, which is stronger.
+    Scripts are limited to this origin + the two identity providers' own SDKs.
+    Contacts data can only travel to Google / Microsoft endpoints.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' https://accounts.google.com https://alcdn.msauth.net https://www.gstatic.com;
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data:;
+    font-src 'self';
+    connect-src 'self' https://www.googleapis.com https://people.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://www.gstatic.com https://graph.microsoft.com https://login.microsoftonline.com https://login.live.com;
+    frame-src https://accounts.google.com https://login.microsoftonline.com https://login.live.com;
+    base-uri 'none';
+    object-src 'none';
+    form-action 'none';
+  " />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔄</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Identity provider SDKs (first-party, loaded from the providers themselves). -->
+  <script defer src="https://accounts.google.com/gsi/client"></script>
+  <script defer src="https://alcdn.msauth.net/browser/2.38.4/js/msal-browser.min.js"></script>
+
+  <!-- Your local, git-ignored configuration, then the app. -->
+  <script defer src="config.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <h1>סנכרון אנשי קשר</h1>
+      <p class="sub">חברו את חשבון Google ואת חשבון Microsoft, ובחרו אילו אנשי קשר להעתיק ביניהם.</p>
+      <p class="privacy">
+        🔒 האפליקציה רצה כולה בדפדפן שלכם. אנשי הקשר עוברים ישירות בין Google ל‑Microsoft —
+        אף שרת (גם לא שלנו) לא רואה ולא שומר אותם. אין שמירת סיסמאות ואין refresh token.
+      </p>
+    </header>
+
+    <div id="session-banner" class="banner hidden" role="status"></div>
+
+    <!-- Step 1: connect both accounts -->
+    <section class="cards" aria-label="חיבור חשבונות">
+      <div class="card" id="card-google">
+        <div class="card-head">
+          <span class="logo" aria-hidden="true">G</span>
+          <h2>Google</h2>
+        </div>
+        <p class="acct" id="g-acct">לא מחובר</p>
+        <div class="card-actions">
+          <button id="g-connect" class="btn btn-google" type="button">התחברות ל‑Google</button>
+          <button id="g-disconnect" class="btn btn-ghost hidden" type="button">התנתקות</button>
+        </div>
+        <p class="meta" id="g-meta"></p>
+      </div>
+
+      <div class="card" id="card-microsoft">
+        <div class="card-head">
+          <span class="logo" aria-hidden="true">M</span>
+          <h2>Microsoft</h2>
+        </div>
+        <p class="acct" id="m-acct">לא מחובר</p>
+        <div class="card-actions">
+          <button id="m-connect" class="btn btn-ms" type="button">התחברות ל‑Microsoft</button>
+          <button id="m-disconnect" class="btn btn-ghost hidden" type="button">התנתקות</button>
+        </div>
+        <p class="meta" id="m-meta"></p>
+      </div>
+    </section>
+
+    <!-- Step 2: choose direction and preview -->
+    <section class="panel" id="sync-panel" aria-label="בחירת סנכרון">
+      <h2 class="panel-title">בחירת כיוון הסנכרון</h2>
+      <div class="dir" role="radiogroup" aria-label="כיוון">
+        <label class="dir-opt">
+          <input type="radio" name="dir" value="g2m" checked />
+          <span>Google → Microsoft</span>
+        </label>
+        <label class="dir-opt">
+          <input type="radio" name="dir" value="m2g" />
+          <span>Microsoft → Google</span>
+        </label>
+      </div>
+      <p class="hint">
+        נעתיק רק אנשי קשר שחסרים ביעד (השוואה לפי כתובת דוא״ל; אם אין דוא״ל — לפי שם).
+        אנשי קשר קיימים לא ישוכפלו.
+      </p>
+      <button id="preview-btn" class="btn btn-primary" type="button" disabled>
+        טעינה ותצוגה מקדימה
+      </button>
+    </section>
+
+    <!-- Step 3: review the diff and sync -->
+    <section class="panel hidden" id="diff-panel" aria-label="בחירת אנשי קשר">
+      <h2 class="panel-title">אנשי קשר להעתקה</h2>
+      <div id="diff-summary" class="summary"></div>
+      <div class="list-controls hidden" id="list-controls">
+        <label class="select-all">
+          <input type="checkbox" id="select-all" checked />
+          <span>בחירת הכול</span>
+        </label>
+        <button id="sync-btn" class="btn btn-primary" type="button">התחלת סנכרון</button>
+      </div>
+      <ul id="diff-list" class="contact-list"></ul>
+    </section>
+
+    <!-- Step 4: results -->
+    <section class="panel hidden" id="results-panel" aria-label="תוצאות">
+      <h2 class="panel-title">תוצאות</h2>
+      <div id="progress" class="progress hidden">
+        <div class="progress-bar"><span id="progress-fill"></span></div>
+        <p id="progress-text"></p>
+      </div>
+      <div id="results"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>קוד פתוח · ללא שרת · ללא מעקב. פרטים ב‑<code>README.md</code> וב‑<code>SETUP.md</code>.</p>
+  </footer>
+</body>
+</html>

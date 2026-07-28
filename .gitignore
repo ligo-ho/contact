@@ -1,0 +1,8 @@
+# Local configuration with your own client IDs (copy from config.example.js).
+# Client IDs are not secrets, but keeping this out of git keeps the repo generic.
+config.js
+
+# Editor / OS noise
+.DS_Store
+*.log
+node_modules/
